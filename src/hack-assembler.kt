@@ -1,13 +1,39 @@
 import java.io.File
 
+val output = StringBuilder()
+val symbolTable = mutableMapOf<String, Int>()
+var currentLineNumber = 0
+var addressCounter = 16
+
 fun main(args: Array<String>) {
     initSymbolTable()
-    println(toHackMachineCode(" @17 "))
-    println(toHackMachineCode(" @-2"))
-    println(toHackMachineCode("fff=D-M"))
+    try {
+        val lines = File(args[0]).readLines()
+            .filter { line -> !line.trim().startsWith("//") && line.trim().isNotEmpty() }
+            .map { line -> line.replace("//.*".toRegex(), "").trim() }
+        lines.forEach { line: String ->
+            if (line.contains("(") && line.contains(")")) {
+                addLabelSymbol(line)
+            } else {
+                currentLineNumber++
+            }
+
+        }
+        lines.forEach { line: String ->
+            if (!line.contains("(") && !line.contains(")")) {
+                output.append(toHackMachineCode(line)).append(System.lineSeparator())
+            }
+        }
+    } catch (e: Exception) {
+        println("ERROR in line $currentLineNumber")
+    }
+
+    File(args[1]).writeText(output.toString())
 }
 
-val symbolTable = mutableMapOf<String, Int>()
+fun addLabelSymbol(line: String) {
+    symbolTable[line.replace("(", "").replace(")", "")] = currentLineNumber
+}
 
 fun initSymbolTable() {
     for (i in 0..15) {
@@ -15,39 +41,80 @@ fun initSymbolTable() {
     }
     symbolTable["SCREEN"] = 16384
     symbolTable["KBD"] = 24576
+    symbolTable["SP"] = 0
+    symbolTable["LCL"] = 1
+    symbolTable["ARG"] = 2
+    symbolTable["THIS"] = 3
+    symbolTable["THAT"] = 4
 }
 
-fun readFile(file: String) = File(file).forEachLine { line: String -> toHackMachineCode(line) }
 
-fun toHackMachineCode(line: String): String {
-    val line = line.trim()
-    return if (line.startsWith('@')) {
-        toAInstruction(line)
+fun toHackMachineCode(hackInstruction: String): String {
+    currentLineNumber++
+    return if (hackInstruction.startsWith('@')) {
+        toAInstruction(hackInstruction)
     } else {
-        toCInstruction(line)
+        toCInstruction(hackInstruction)
     }
 }
 
 fun toCInstruction(line: String): String {
     val cInstruction = StringBuilder("111")
+    var dest = ""
+    var jump = ""
     if (line.contains(';')) {
-        val instructions = line.split(';')
-    } else {
-        cInstruction.append(toDestCompInstruction(line))
+        jump = line.split(';').last()
     }
+    if (line.contains('=')) {
+        dest = line.split('=').first()
+    }
+    val comp: String = line.replace(".*=".toRegex(), "").replace(";.*".toRegex(), "")
+    appendCompInstruction(comp, cInstruction)
+    appendDestInstruction(dest, cInstruction)
+    appendJumpInstruction(jump, cInstruction)
     return cInstruction.toString()
 }
 
-fun toDestCompInstruction(line: String): String {
-    val destCompInstruction = StringBuilder()
-    val instructions = line.split('=')
-    if (instructions[1].contains('M')) {
-        destCompInstruction.append("1")
+fun appendDestInstruction(dest: String, instruction: StringBuilder) {
+    instruction.append(
+        when (dest) {
+            "" -> "000"
+            "M" -> "001"
+            "D" -> "010"
+            "DM", "MD" -> "011"
+            "A" -> "100"
+            "AM" -> "101"
+            "AD" -> "110"
+            "ADM", "AMD" -> "111"
+            else -> throw Exception("SyntaxError")
+        }
+    )
+}
+
+fun appendJumpInstruction(jump: String, instruction: StringBuilder) {
+    instruction.append(
+        when (jump) {
+            "" -> "000"
+            "JGT" -> "001"
+            "JEQ" -> "010"
+            "JGE" -> "011"
+            "JLT" -> "100"
+            "JNE" -> "101"
+            "JLE" -> "110"
+            "JMP" -> "111"
+            else -> throw Exception("SyntaxError")
+        }
+    )
+}
+
+fun appendCompInstruction(comp: String, instruction: StringBuilder) {
+    if (comp.contains('M')) {
+        instruction.append("1")
     } else {
-        destCompInstruction.append("0")
+        instruction.append("0")
     }
-    destCompInstruction.append(
-        when (instructions[1]) {
+    instruction.append(
+        when (comp) {
             "0" -> "101010"
             "1" -> "111111"
             "-1" -> "111010"
@@ -66,20 +133,26 @@ fun toDestCompInstruction(line: String): String {
             "A-D", "M-D" -> "000111"
             "D&A", "D&M" -> "000000"
             "D|A", "D|M" -> "010101"
-            else -> {}
+            else -> throw Exception("SyntaxError")
         }
     )
-
-
-
-    return destCompInstruction.toString()
 }
 
 fun toAInstruction(line: String): String {
-    val value = line.removeRange(0..0)
-    val binaryString = toBinaryString(value)
-    return "0$binaryString"
+    val symbol = line.removeRange(0..0)
+    return if (isNumeric(symbol)) {
+        toBinaryString(symbol)
+    } else {
+        var value = symbolTable[symbol]
+        if (value == null) {
+            value = addressCounter
+            symbolTable[symbol] = addressCounter++
+        }
+        toBinaryString(value.toString())
+    }
 }
+
+fun isNumeric(string: String) = string.toIntOrNull() != null
 
 fun toBinaryString(value: String): String {
     var binaryString = Integer.toBinaryString(value.toShort().toInt())
@@ -92,4 +165,3 @@ fun toBinaryString(value: String): String {
     }
     return binaryString
 }
-
