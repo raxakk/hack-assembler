@@ -155,13 +155,16 @@ fun toAInstruction(line: String): String {
 fun isNumeric(string: String) = string.toIntOrNull() != null
 
 fun toBinaryString(value: String): String {
-    var binaryString = Integer.toBinaryString(value.toShort().toInt())
-    if (binaryString.length > 16) {
-        binaryString = binaryString.substring(binaryString.length - 16, binaryString.length)
-    } else {
-        while (binaryString.length < 16) {
-            binaryString = "0$binaryString"
-        }
+    val intValue = value.toShort().toInt()
+    if (intValue < 0) {
+        throw Exception("SyntaxError")
+    }
+    var binaryString = Integer.toBinaryString(intValue)
+    if (binaryString.length > 15) {
+        binaryString = binaryString.substring(binaryString.length - 15, binaryString.length)
+    }
+    while (binaryString.length < 16) {
+        binaryString = "0$binaryString"
     }
     return binaryString
 }
